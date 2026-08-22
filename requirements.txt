@@ -1,4 +1,5 @@
 # Reference app dependencies. geonexus-sdk comes from PyPI (or local editable
 # install of the sibling mvp checkout: pip install -e ../mvp).
-geonexus-sdk>=1.0.0
+# [mcp] extra pulls in the official MCP SDK for the client bridge demo.
+geonexus-sdk[mcp]>=1.0.0
 uvicorn>=0.27

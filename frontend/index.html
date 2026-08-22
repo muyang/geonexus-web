@@ -98,15 +98,27 @@
       <pre id="execResult" class="hidden"></pre>
     </section>
 
-    <!-- 4. Goals (optional) -->
+    <!-- 4. Goals (reflective v1.1) -->
     <section class="panel hidden" id="goalPanel">
-      <h2>4 · 自然语言目标 (LLM Planner)</h2>
+      <h2>4 · 自然语言目标 (Reflective v1.1)</h2>
       <div class="row">
-        <input id="goalText" placeholder="如：分析亚马逊雨林植被变化（需配置 LLM）" style="flex:1">
+        <input id="goalText" placeholder="如：分析亚马逊雨林植被变化" style="flex:1" value="分析植被变化">
         <button onclick="runGoal()">提交目标</button>
+        <button class="ghost" onclick="toggleReflective()" id="reflectiveBtn">反射执行: 开</button>
       </div>
       <div class="status" id="goalStatus"></div>
       <pre id="goalResult" class="hidden"></pre>
+    </section>
+
+    <!-- 5. MCP imported skills -->
+    <section class="panel hidden" id="mcpPanel">
+      <h2>5 · MCP 导入技能 (MCP Client v1.1)</h2>
+      <div class="row">
+        <button onclick="listMcpSkills()">列出 MCP 技能</button>
+      </div>
+      <div class="status" id="mcpStatus"></div>
+      <pre id="mcpResult" class="hidden"></pre>
+      <div class="status" id="mcpExecStatus"></div>
     </section>
   </main>
 
@@ -138,7 +150,7 @@
         el.className = "status ok";
         el.textContent = `✅ 登录成功（${data.subject}，有效期 ${data.expires_in}s）`;
         document.getElementById("loginPanel").querySelector("button").disabled = true;
-        ["searchPanel", "execPanel", "goalPanel"].forEach(id =>
+        ["searchPanel", "execPanel", "goalPanel", "mcpPanel"].forEach(id =>
           document.getElementById(id).classList.remove("hidden"));
       } catch (e) {
         el.className = "status err"; el.textContent = `❌ ${e.message}`;
@@ -257,20 +269,74 @@
       }
     }
 
-    // ---- 4. Goal ----
+    // ---- 4. Goal (reflective v1.1) ----
+    let REFLECTIVE = true;
+    function toggleReflective() {
+      REFLECTIVE = !REFLECTIVE;
+      const btn = document.getElementById("reflectiveBtn");
+      btn.textContent = `反射执行: ${REFLECTIVE ? "开" : "关"}`;
+    }
+
     async function runGoal() {
       const el = document.getElementById("goalStatus");
       el.className = "status"; el.textContent = "提交目标…";
       try {
         const data = await api("/api/goals", {
           method: "POST",
-          body: JSON.stringify({ text: document.getElementById("goalText").value }),
+          body: JSON.stringify({
+            text: document.getElementById("goalText").value,
+            reflective: REFLECTIVE,
+          }),
         });
         el.className = "status"; el.textContent = `目标任务 ${data.task_id.slice(0, 8)}… 已入队`;
         const state = await pollTask(data.task_id, document.getElementById("progressFill"), el);
         showJson("goalResult", state);
+        // Highlight the v1.1 self-assessment when present.
+        const ev = state.result && state.result.evaluation;
+        if (ev) {
+          const emoji = ev.satisfied ? "✅" : "⚠️";
+          el.className = `status ${ev.satisfied ? "ok" : "warn"}`;
+          el.textContent = `${emoji} 目标完成 · 自评 ${ev.score}/100 · ${ev.notes}`;
+        } else {
+          el.className = "status ok";
+          el.textContent = `✅ 目标任务完成${REFLECTIVE ? "（反射执行）" : "（确定性执行）"}`;
+        }
       } catch (e) {
         el.className = "status err"; el.textContent = `❌ ${e.message}（LLM 未配置时为预期行为）`;
+      }
+    }
+
+    // ---- 5. MCP imported skills (v1.1) ----
+    async function listMcpSkills() {
+      const el = document.getElementById("mcpStatus");
+      el.className = "status"; el.textContent = "查询 MCP 导入技能…";
+      try {
+        const data = await api("/api/skills");
+        const mcp = (data.skills || []).filter(s => (s.skill ? s.skill.name : s.name || "").startsWith("mcp-"));
+        showJson("mcpResult", { count: mcp.length, skills: mcp });
+        el.className = "status ok";
+        el.textContent = `✅ 发现 ${mcp.length} 个 MCP 导入技能（mcp- 前缀）`;
+        if (mcp.length) {
+          const name = mcp[0].skill ? mcp[0].skill.name : mcp[0].name;
+          el.textContent += ` · 执行 ${name}…`;
+          try {
+            const exec = await api("/api/execute", {
+              method: "POST",
+              body: JSON.stringify({ skill: name }),
+            });
+            const state = await pollTask(exec.task_id,
+              document.getElementById("progressFill"),
+              document.getElementById("mcpExecStatus"));
+            showJson("mcpResult", { count: mcp.length, skills: mcp, executed: state });
+            document.getElementById("mcpExecStatus").className = "status ok";
+            document.getElementById("mcpExecStatus").textContent = `✅ ${name} 执行完成`;
+          } catch (err) {
+            document.getElementById("mcpExecStatus").className = "status err";
+            document.getElementById("mcpExecStatus").textContent = `❌ ${name} 执行失败: ${err.message}`;
+          }
+        }
+      } catch (e) {
+        el.className = "status err"; el.textContent = `❌ ${e.message}`;
       }
     }
 
