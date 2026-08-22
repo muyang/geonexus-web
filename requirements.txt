@@ -1,0 +1,4 @@
+# Reference app dependencies. geonexus-sdk comes from PyPI (or local editable
+# install of the sibling mvp checkout: pip install -e ../mvp).
+geonexus-sdk>=1.0.0
+uvicorn>=0.27

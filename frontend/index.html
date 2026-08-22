@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GeoNexus Web — Reference App</title>
+  <style>
+    :root {
+      --bg: #0f172a; --panel: #1e293b; --border: #334155; --text: #e2e8f0;
+      --muted: #94a3b8; --accent: #38bdf8; --ok: #4ade80; --err: #f87171;
+      --warn: #fbbf24;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: -apple-system, "PingFang SC", "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+    }
+    header {
+      padding: 16px 24px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px;
+    }
+    header h1 { font-size: 18px; margin: 0; }
+    header .tag {
+      font-size: 12px; color: var(--accent); border: 1px solid var(--accent);
+      border-radius: 999px; padding: 2px 10px;
+    }
+    main { max-width: 960px; margin: 0 auto; padding: 24px; }
+    .panel {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;
+    }
+    .panel h2 { font-size: 14px; margin: 0 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    input, button, select {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px; font-size: 14px;
+    }
+    button { cursor: pointer; background: var(--accent); color: #0f172a; font-weight: 600; border: none; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    input[type=password] { letter-spacing: 2px; }
+    pre {
+      background: #0b1220; border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px; overflow: auto; font-size: 12px; max-height: 320px;
+    }
+    .status { font-size: 13px; margin-top: 8px; }
+    .ok { color: var(--ok); } .err { color: var(--err); } .warn { color: var(--warn); }
+    .progress { height: 6px; background: var(--border); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+    .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🌍 GeoNexus Web</h1>
+    <span class="tag">Reference App</span>
+    <span style="margin-left:auto; font-size:12px; color:var(--muted)" id="apiBase">API: /api</span>
+  </header>
+
+  <main>
+    <!-- 1. Login -->
+    <section class="panel" id="loginPanel">
+      <h2>1 · 登录 (BFF + JWT)</h2>
+      <div class="row">
+        <input id="user" placeholder="用户名" value="demo">
+        <input id="pass" type="password" placeholder="密码" value="demo1234">
+        <button onclick="login()">登录</button>
+      </div>
+      <div class="status" id="loginStatus"></div>
+    </section>
+
+    <!-- 2. Search -->
+    <section class="panel hidden" id="searchPanel">
+      <h2>2 · 搜索数据 (Registry)</h2>
+      <div class="row">
+        <input id="q" placeholder="搜索词，如 ndvi" value="ndvi" style="flex:1">
+        <button onclick="searchCards()">搜索卡片</button>
+        <button class="ghost" onclick="listSkills()">列出技能</button>
+      </div>
+      <div class="status" id="searchStatus"></div>
+      <pre id="searchResult" class="hidden"></pre>
+    </section>
+
+    <!-- 3. Execute -->
+    <section class="panel hidden" id="execPanel">
+      <h2>3 · 执行技能 (Async Task + SSE)</h2>
+      <div class="row">
+        <input id="skill" placeholder="技能名" value="ndvi">
+        <input id="card" placeholder="GeoCard id（可空）">
+        <button onclick="execute()">执行</button>
+        <button class="ghost" onclick="cancelTask()">取消</button>
+      </div>
+      <div class="progress hidden" id="progressBar"><div id="progressFill"></div></div>
+      <div class="status" id="execStatus"></div>
+      <pre id="execResult" class="hidden"></pre>
+    </section>
+
+    <!-- 4. Goals (optional) -->
+    <section class="panel hidden" id="goalPanel">
+      <h2>4 · 自然语言目标 (LLM Planner)</h2>
+      <div class="row">
+        <input id="goalText" placeholder="如：分析亚马逊雨林植被变化（需配置 LLM）" style="flex:1">
+        <button onclick="runGoal()">提交目标</button>
+      </div>
+      <div class="status" id="goalStatus"></div>
+      <pre id="goalResult" class="hidden"></pre>
+    </section>
+  </main>
+
+  <script>
+    const BASE = "";
+    let TOKEN = null;
+
+    async function api(path, opts = {}) {
+      const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+      if (TOKEN) headers["Authorization"] = `Bearer ${TOKEN}`;
+      const resp = await fetch(BASE + path, { ...opts, headers });
+      if (resp.status === 401) throw new Error("未认证或 token 失效");
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.detail || JSON.stringify(data));
+      return data;
+    }
+
+    // ---- 1. Login ----
+    async function login() {
+      const el = document.getElementById("loginStatus");
+      el.className = "status"; el.textContent = "登录中…";
+      try {
+        const data = await api("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ username: document.getElementById("user").value,
+                                 password: document.getElementById("pass").value }),
+        });
+        TOKEN = data.token;
+        el.className = "status ok";
+        el.textContent = `✅ 登录成功（${data.subject}，有效期 ${data.expires_in}s）`;
+        document.getElementById("loginPanel").querySelector("button").disabled = true;
+        ["searchPanel", "execPanel", "goalPanel"].forEach(id =>
+          document.getElementById(id).classList.remove("hidden"));
+      } catch (e) {
+        el.className = "status err"; el.textContent = `❌ ${e.message}`;
+      }
+    }
+
+    // ---- 2. Search ----
+    async function searchCards() {
+      const el = document.getElementById("searchStatus");
+      el.className = "status"; el.textContent = "搜索中…";
+      try {
+        const q = document.getElementById("q").value;
+        const data = await api(`/api/cards?q=${encodeURIComponent(q)}`);
+        showJson("searchResult", data);
+        el.className = "status ok"; el.textContent = `✅ 找到 ${data.count ?? data.results?.length ?? 0} 条`;
+      } catch (e) { el.className = "status err"; el.textContent = `❌ ${e.message}`; }
+    }
+
+    async function listSkills() {
+      const el = document.getElementById("searchStatus");
+      try {
+        const data = await api("/api/skills");
+        showJson("searchResult", data);
+        el.className = "status ok"; el.textContent = `✅ ${data.count ?? 0} 个技能`;
+      } catch (e) { el.className = "status err"; el.textContent = `❌ ${e.message}`; }
+    }
+
+    // ---- 3. Execute (async task + SSE) ----
+    let currentTask = null;
+    async function execute() {
+      const el = document.getElementById("execStatus");
+      const fill = document.getElementById("progressFill");
+      el.className = "status"; el.textContent = "提交任务…";
+      document.getElementById("progressBar").classList.remove("hidden");
+      fill.style.width = "0%";
+      try {
+        const card = document.getElementById("card").value;
+        const data = await api("/api/execute", {
+          method: "POST",
+          body: JSON.stringify({
+            skill: document.getElementById("skill").value || "ndvi",
+            geocards: card ? [card] : [],
+          }),
+        });
+        currentTask = data.task_id;
+        el.className = "status"; el.textContent = `任务 ${data.task_id.slice(0, 8)}… 已入队，监听 SSE`;
+        await streamTask(data.task_id, fill, el);
+      } catch (e) {
+        el.className = "status err"; el.textContent = `❌ ${e.message}`;
+        document.getElementById("progressBar").classList.add("hidden");
+      }
+    }
+
+    function streamTask(taskId, fill, el) {
+      return new Promise((resolve, reject) => {
+        const es = new EventSource(`${BASE}/api/tasks/${taskId}/stream`, {
+          headers: { Authorization: `Bearer ${TOKEN}` },
+        });
+        es.onmessage = (ev) => {
+          const state = JSON.parse(ev.data);
+          fill.style.width = `${Math.round((state.progress || 0) * 100)}%`;
+          if (state.message) el.textContent = `⏳ ${state.message}`;
+          if (state.status === "done") {
+            es.close();
+            el.className = "status ok";
+            el.textContent = `✅ 完成`;
+            showJson("execResult", { status: "done", result: state.result });
+            resolve();
+          } else if (state.status === "failed") {
+            es.close();
+            el.className = "status err";
+            el.textContent = `❌ 失败: ${state.error}`;
+            showJson("execResult", state);
+            reject(new Error(state.error));
+          } else if (state.status === "cancelled") {
+            es.close();
+            el.className = "status warn";
+            el.textContent = `⚠️ 已取消`;
+            resolve();
+          }
+        };
+        es.onerror = () => {
+          // EventSource doesn't send Authorization headers; fall back to polling.
+          es.close();
+          pollTask(taskId, fill, el).then(resolve, reject);
+        };
+      });
+    }
+
+    async function pollTask(taskId, fill, el) {
+      for (let i = 0; i < 200; i++) {
+        const state = await api(`/api/tasks/${taskId}`);
+        fill.style.width = `${Math.round((state.progress || 0) * 100)}%`;
+        if (state.status === "done") {
+          el.className = "status ok"; el.textContent = `✅ 完成`;
+          showJson("execResult", { status: "done", result: state.result });
+          return;
+        }
+        if (state.status === "failed") {
+          el.className = "status err"; el.textContent = `❌ 失败: ${state.error}`;
+          showJson("execResult", state);
+          throw new Error(state.error);
+        }
+        await new Promise(r => setTimeout(r, 500));
+      }
+      throw new Error("轮询超时");
+    }
+
+    async function cancelTask() {
+      if (!currentTask) return;
+      try {
+        await api(`/api/tasks/${currentTask}/cancel`, { method: "POST" });
+        document.getElementById("execStatus").textContent = "已发送取消请求";
+      } catch (e) {
+        document.getElementById("execStatus").textContent = `❌ ${e.message}`;
+      }
+    }
+
+    // ---- 4. Goal ----
+    async function runGoal() {
+      const el = document.getElementById("goalStatus");
+      el.className = "status"; el.textContent = "提交目标…";
+      try {
+        const data = await api("/api/goals", {
+          method: "POST",
+          body: JSON.stringify({ text: document.getElementById("goalText").value }),
+        });
+        el.className = "status"; el.textContent = `目标任务 ${data.task_id.slice(0, 8)}… 已入队`;
+        const state = await pollTask(data.task_id, document.getElementById("progressFill"), el);
+        showJson("goalResult", state);
+      } catch (e) {
+        el.className = "status err"; el.textContent = `❌ ${e.message}（LLM 未配置时为预期行为）`;
+      }
+    }
+
+    function showJson(id, data) {
+      const pre = document.getElementById(id);
+      pre.classList.remove("hidden");
+      pre.textContent = JSON.stringify(data, null, 2);
+    }
+  </script>
+</body>
+</html>
