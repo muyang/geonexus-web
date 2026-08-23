@@ -81,37 +81,92 @@ class RunningStack:
 
         from geonexus.geonode import Skill
 
-        # Generate synthetic red/nir rasters once, so the demo executes
-        # out of the box (the NDVI skill needs real file paths).
+        # Generate synthetic red/nir rasters for TWO time steps (2015 healthy,
+        # 2025 degraded) so both single-period NDVI and change detection run
+        # out of the box (the skills need real file paths).
         workdir = REPO_ROOT / "output"
         workdir.mkdir(parents=True, exist_ok=True)
-        red_path = workdir / "red.tif"
-        nir_path = workdir / "nir.tif"
-        if not red_path.exists():
-            from geonexus.geonode import SkillContext
-
-            paths = ndvi_skill.generate_synthetic_scene(
-                2025, str(workdir), width=120, height=120, seed=42
-            )
-            red_path = Path(paths["red"])
-            nir_path = Path(paths["nir"])
-        self._demo_inputs = {"red": str(red_path), "nir": str(nir_path)}
+        for year in (2015, 2025):
+            red = workdir / f"synthetic_red_{year}.tif"
+            if not red.exists():
+                ndvi_skill.generate_synthetic_scene(
+                    year, str(workdir), width=160, height=160, seed=year
+                )
+        self._demo_inputs = {
+            "2015": {
+                "red": str(workdir / "synthetic_red_2015.tif"),
+                "nir": str(workdir / "synthetic_nir_2015.tif"),
+            },
+            "2025": {
+                "red": str(workdir / "synthetic_red_2025.tif"),
+                "nir": str(workdir / "synthetic_nir_2025.tif"),
+            },
+        }
 
         node = GeoNode(name="demo-node", workdir=str(workdir))
 
         def _ndvi_handler(params: dict[str, Any], context: Any) -> dict[str, Any]:
-            """Fill in the demo rasters when the caller omits them."""
-            merged = {**self._demo_inputs, **params}
+            """NDVI for one time step; `year` selects the demo rasters."""
+            year = str(params.pop("year", "2025") or "2025")
+            inputs = self._demo_inputs.get(year, self._demo_inputs["2025"])
+            merged = {**inputs, **params}
             return ndvi_skill.ndvi_analysis_handler(merged, context)
+
+        def _change_handler(params: dict[str, Any], context: Any) -> dict[str, Any]:
+            """Change detection between the two demo time steps."""
+            a = self._demo_inputs["2015"]
+            b = self._demo_inputs["2025"]
+            # Run NDVI for each step, then the change.
+            stats_a = ndvi_skill.compute_ndvi_from_files(
+                a["red"], a["nir"], str(workdir / "ndvi_2015.tif")
+            )
+            stats_b = ndvi_skill.compute_ndvi_from_files(
+                b["red"], b["nir"], str(workdir / "ndvi_2025.tif")
+            )
+            stats_change = ndvi_skill.compute_change(
+                str(workdir / "ndvi_2015.tif"),
+                str(workdir / "ndvi_2025.tif"),
+                str(workdir / "ndvi_change.tif"),
+            )
+            degraded = 0
+            n_total = stats_change.get("count") or 0
+            if n_total:
+                # Count pixels whose NDVI dropped by more than 0.1.
+                import numpy as _np
+
+                import rasterio as _rio
+
+                with _rio.open(str(workdir / "ndvi_change.tif")) as src:
+                    data = src.read(1)
+                valid = data[data != ndvi_skill.NDVI_NODATA]
+                degraded = int(_np.sum(valid < -0.1)) if valid.size else 0
+            return {
+                "change_raster": str(workdir / "ndvi_change.tif"),
+                "ndvi_2015": str(workdir / "ndvi_2015.tif"),
+                "ndvi_2025": str(workdir / "ndvi_2025.tif"),
+                "stats": {
+                    "ndvi_2015_mean": stats_a.get("mean"),
+                    "ndvi_2015_median": stats_a.get("median"),
+                    "ndvi_2015_std": stats_a.get("std"),
+                    "ndvi_2025_mean": stats_b.get("mean"),
+                    "ndvi_2025_median": stats_b.get("median"),
+                    "ndvi_2025_std": stats_b.get("std"),
+                    "change_mean": stats_change.get("mean_change"),
+                    "degraded_pixels": degraded,
+                    "total_pixels": n_total,
+                    "synthetic": True,
+                },
+                "synthetic": True,
+            }
 
         skill = Skill(
             name="ndvi",
-            description="Compute NDVI from red/NIR rasters (synthetic demo data).",
+            description="Compute NDVI from red/NIR rasters (synthetic demo data). "
+            "Pass `year` (2015 or 2025) to pick the demo scene.",
             input_schema={
                 "type": "object",
-                # red/nir are optional here: the demo handler fills in
-                # synthetic rasters when the caller omits them.
                 "properties": {
+                    "year": {"type": "string"},
                     "red": {"type": "string"},
                     "nir": {"type": "string"},
                     "output": {"type": "string"},
@@ -127,6 +182,31 @@ class RunningStack:
             handler=_ndvi_handler,
         )
         node.register_skill_object(skill)
+
+        change_skill = Skill(
+            name="ndvi-change",
+            description="Detect NDVI change between 2015 and 2025 "
+            "(synthetic demo data).",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "ndvi_a": {"type": "string"},
+                    "ndvi_b": {"type": "string"},
+                    "output": {"type": "string"},
+                },
+            },
+            output_schema={
+                "type": "object",
+                "properties": {
+                    "change_raster": {"type": "string"},
+                    "ndvi_2015": {"type": "string"},
+                    "ndvi_2025": {"type": "string"},
+                    "stats": {"type": "object"},
+                },
+            },
+            handler=_change_handler,
+        )
+        node.register_skill_object(change_skill)
 
         if GEOCARD_PATH.exists():
             card = load_geocard(str(GEOCARD_PATH))

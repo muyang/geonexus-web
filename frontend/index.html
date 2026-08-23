@@ -3,12 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GeoNexus Web — Reference App</title>
+  <title>GeoNexus — 亚马逊雨林植被变化分析</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     :root {
-      --bg: #0f172a; --panel: #1e293b; --border: #334155; --text: #e2e8f0;
-      --muted: #94a3b8; --accent: #38bdf8; --ok: #4ade80; --err: #f87171;
-      --warn: #fbbf24;
+      --bg: #0b1220; --panel: #151f31; --panel2: #1b2740; --border: #2a3a55;
+      --text: #e2e8f0; --muted: #8ba3c7; --accent: #38bdf8; --accent2: #22d3ee;
+      --ok: #4ade80; --err: #f87171; --warn: #fbbf24;
     }
     * { box-sizing: border-box; }
     body {
@@ -16,116 +18,148 @@
       background: var(--bg); color: var(--text); min-height: 100vh;
     }
     header {
-      padding: 16px 24px; border-bottom: 1px solid var(--border);
-      display: flex; align-items: center; gap: 12px;
+      padding: 14px 22px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      background: linear-gradient(90deg, #0f3d3a, #0b1220 60%);
     }
-    header h1 { font-size: 18px; margin: 0; }
-    header .tag {
-      font-size: 12px; color: var(--accent); border: 1px solid var(--accent);
-      border-radius: 999px; padding: 2px 10px;
+    header h1 { font-size: 17px; margin: 0; }
+    header .sub { font-size: 12px; color: var(--muted); }
+    header .spacer { flex: 1; }
+    .login-box { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+    .login-box input {
+      background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; padding: 5px 9px; font-size: 12px; width: 90px;
     }
-    main { max-width: 960px; margin: 0 auto; padding: 24px; }
+    .user-chip { color: var(--ok); font-size: 12px; }
+    main { display: flex; gap: 14px; padding: 14px 22px; height: calc(100vh - 118px); }
+    .map-wrap { flex: 1; min-width: 0; position: relative; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    #map { width: 100%; height: 100%; background: #0d1526; }
+    .side {
+      width: 340px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto;
+    }
     .panel {
-      background: var(--panel); border: 1px solid var(--border);
-      border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      padding: 14px 16px;
     }
-    .panel h2 { font-size: 14px; margin: 0 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    input, button, select {
-      background: var(--bg); color: var(--text); border: 1px solid var(--border);
-      border-radius: 8px; padding: 8px 12px; font-size: 14px;
+    .panel h2 {
+      font-size: 12px; margin: 0 0 10px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .08em;
+      display: flex; align-items: center; gap: 6px;
     }
-    button { cursor: pointer; background: var(--accent); color: #0f172a; font-weight: 600; border: none; }
+    .field { margin-bottom: 10px; }
+    .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    select, input[type=text] {
+      width: 100%; background: var(--panel2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: 13px;
+    }
+    button {
+      background: var(--accent); color: #062033; border: none; border-radius: 8px;
+      padding: 9px 14px; font-size: 13px; font-weight: 600; cursor: pointer; width: 100%;
+    }
     button:disabled { opacity: .4; cursor: not-allowed; }
-    button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
-    input[type=password] { letter-spacing: 2px; }
-    pre {
-      background: #0b1220; border: 1px solid var(--border); border-radius: 8px;
-      padding: 12px; overflow: auto; font-size: 12px; max-height: 320px;
-    }
-    .status { font-size: 13px; margin-top: 8px; }
+    button.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+    .status { font-size: 12px; margin-top: 8px; min-height: 16px; }
     .ok { color: var(--ok); } .err { color: var(--err); } .warn { color: var(--warn); }
-    .progress { height: 6px; background: var(--border); border-radius: 3px; margin-top: 8px; overflow: hidden; }
-    .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    .progress { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+    .progress > div { height: 100%; width: 0; background: var(--accent2); transition: width .3s; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--border); }
     th { color: var(--muted); font-weight: 500; }
-    .hidden { display: none; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .stat-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+    .stat-card .k { font-size: 10px; color: var(--muted); }
+    .stat-card .v { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .legend { font-size: 11px; color: var(--muted); margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 4px; vertical-align: -2px; }
+    .hidden { display: none !important; }
+    .overlay {
+      position: absolute; top: 12px; left: 12px; z-index: 1000;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      padding: 8px 12px; font-size: 12px; color: var(--muted);
+    }
+    .overlay .t { color: var(--text); font-weight: 600; }
+    footer { padding: 8px 22px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); }
   </style>
 </head>
 <body>
   <header>
-    <h1>🌍 GeoNexus Web</h1>
-    <span class="tag">Reference App</span>
-    <span style="margin-left:auto; font-size:12px; color:var(--muted)" id="apiBase">API: /api</span>
+    <h1>🌿 GeoNexus · 亚马逊雨林植被变化分析</h1>
+    <span class="sub">GeoCard → GeoMCP → GeoNode → GeoSkill → 结果</span>
+    <span class="spacer"></span>
+    <div class="login-box" id="loginBox">
+      <input id="user" value="demo" placeholder="用户">
+      <input id="pass" type="password" value="demo1234" placeholder="密码">
+      <button id="loginBtn" style="width:auto" onclick="login()">登录</button>
+      <span class="user-chip hidden" id="userChip"></span>
+    </div>
   </header>
 
   <main>
-    <!-- 1. Login -->
-    <section class="panel" id="loginPanel">
-      <h2>1 · 登录 (BFF + JWT)</h2>
-      <div class="row">
-        <input id="user" placeholder="用户名" value="demo">
-        <input id="pass" type="password" placeholder="密码" value="demo1234">
-        <button onclick="login()">登录</button>
+    <div class="map-wrap">
+      <div id="map"></div>
+      <div class="overlay" id="mapOverlay">
+        <span class="t">研究区：亚马逊雨林</span><br>
+        <span id="overlayHint">选择分析类型后点击「运行分析」</span>
       </div>
-      <div class="status" id="loginStatus"></div>
-    </section>
+    </div>
 
-    <!-- 2. Search -->
-    <section class="panel hidden" id="searchPanel">
-      <h2>2 · 搜索数据 (Registry)</h2>
-      <div class="row">
-        <input id="q" placeholder="搜索词，如 ndvi" value="ndvi" style="flex:1">
-        <button onclick="searchCards()">搜索卡片</button>
-        <button class="ghost" onclick="listSkills()">列出技能</button>
+    <div class="side">
+      <!-- 分析控制 -->
+      <div class="panel" id="controlPanel">
+        <h2>🔬 分析控制</h2>
+        <div class="field">
+          <label>分析类型</label>
+          <select id="analysisType">
+            <option value="ndvi-2015">NDVI · 2015（健康森林）</option>
+            <option value="ndvi-2025">NDVI · 2025（退化森林）</option>
+            <option value="change" selected>变化检测 · 2015 → 2025</option>
+          </select>
+        </div>
+        <button id="runBtn" onclick="runAnalysis()" disabled>运行分析</button>
+        <div class="progress hidden" id="progressBar"><div id="progressFill"></div></div>
+        <div class="status" id="analysisStatus">请先登录</div>
       </div>
-      <div class="status" id="searchStatus"></div>
-      <pre id="searchResult" class="hidden"></pre>
-    </section>
 
-    <!-- 3. Execute -->
-    <section class="panel hidden" id="execPanel">
-      <h2>3 · 执行技能 (Async Task + SSE)</h2>
-      <div class="row">
-        <input id="skill" placeholder="技能名" value="ndvi">
-        <input id="card" placeholder="GeoCard id（可空）">
-        <button onclick="execute()">执行</button>
-        <button class="ghost" onclick="cancelTask()">取消</button>
+      <!-- 结果 -->
+      <div class="panel hidden" id="resultPanel">
+        <h2>📊 分析结果</h2>
+        <div id="resultBody"></div>
+        <button class="ghost" style="margin-top:10px" onclick="clearLayers()">清除图层</button>
       </div>
-      <div class="progress hidden" id="progressBar"><div id="progressFill"></div></div>
-      <div class="status" id="execStatus"></div>
-      <pre id="execResult" class="hidden"></pre>
-    </section>
 
-    <!-- 4. Goals (reflective v1.1) -->
-    <section class="panel hidden" id="goalPanel">
-      <h2>4 · 自然语言目标 (Reflective v1.1)</h2>
-      <div class="row">
-        <input id="goalText" placeholder="如：分析亚马逊雨林植被变化" style="flex:1" value="分析植被变化">
-        <button onclick="runGoal()">提交目标</button>
-        <button class="ghost" onclick="toggleReflective()" id="reflectiveBtn">反射执行: 开</button>
+      <!-- 技术说明 -->
+      <div class="panel">
+        <h2>ℹ️ 技术栈</h2>
+        <div style="font-size:12px;color:var(--muted);line-height:1.7">
+          浏览器 ──JWT──▶ Web BFF ──X-API-Key──▶ GeoNode<br>
+          技能：<b style="color:var(--text)">ndvi</b>（单时相）、<b style="color:var(--text)">ndvi-change</b>（双时相）<br>
+          编排：异步任务 + SSE 进度 · 数据：合成栅格（明示非真实卫星数据）
+        </div>
       </div>
-      <div class="status" id="goalStatus"></div>
-      <pre id="goalResult" class="hidden"></pre>
-    </section>
-
-    <!-- 5. MCP imported skills -->
-    <section class="panel hidden" id="mcpPanel">
-      <h2>5 · MCP 导入技能 (MCP Client v1.1)</h2>
-      <div class="row">
-        <button onclick="listMcpSkills()">列出 MCP 技能</button>
-      </div>
-      <div class="status" id="mcpStatus"></div>
-      <pre id="mcpResult" class="hidden"></pre>
-      <div class="status" id="mcpExecStatus"></div>
-    </section>
+    </div>
   </main>
+
+  <footer>GeoNexus Reference Application — synthetic demo data; production uses real Sentinel-2 via the same GeoCard/GeoMCP path.</footer>
 
   <script>
     const BASE = "";
+    const AMAZON_BBOX = [[-15.0, -73.9], [5.0, -44.0]];  // [[south, west], [north, east]]
     let TOKEN = null;
+    let map = null;
+    let currentLayer = null;
 
+    // ---- Map init ----
+    function initMap() {
+      map = L.map("map", { zoomControl: true }).fitBounds(AMAZON_BBOX);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 18, attribution: "© OpenStreetMap",
+      }).addTo(map);
+      // Study-area rectangle.
+      L.rectangle(AMAZON_BBOX, { color: "#38bdf8", weight: 2, dashArray: "4 4" }).addTo(map);
+    }
+
+    // ---- API helper ----
     async function api(path, opts = {}) {
       const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
       if (TOKEN) headers["Authorization"] = `Bearer ${TOKEN}`;
@@ -136,215 +170,167 @@
       return data;
     }
 
-    // ---- 1. Login ----
+    // ---- Login ----
     async function login() {
-      const el = document.getElementById("loginStatus");
-      el.className = "status"; el.textContent = "登录中…";
+      const btn = document.getElementById("loginBtn");
+      btn.disabled = true;
       try {
         const data = await api("/api/auth/login", {
           method: "POST",
-          body: JSON.stringify({ username: document.getElementById("user").value,
-                                 password: document.getElementById("pass").value }),
+          body: JSON.stringify({
+            username: document.getElementById("user").value,
+            password: document.getElementById("pass").value,
+          }),
         });
         TOKEN = data.token;
-        el.className = "status ok";
-        el.textContent = `✅ 登录成功（${data.subject}，有效期 ${data.expires_in}s）`;
-        document.getElementById("loginPanel").querySelector("button").disabled = true;
-        ["searchPanel", "execPanel", "goalPanel", "mcpPanel"].forEach(id =>
-          document.getElementById(id).classList.remove("hidden"));
+        document.getElementById("userChip").textContent = `✅ ${data.subject}`;
+        document.getElementById("userChip").classList.remove("hidden");
+        document.getElementById("loginBox").querySelectorAll("input").forEach(i => i.disabled = true);
+        btn.classList.add("hidden");
+        document.getElementById("runBtn").disabled = false;
+        document.getElementById("analysisStatus").textContent = "就绪 — 选择分析类型并运行";
+        document.getElementById("analysisStatus").className = "status ok";
       } catch (e) {
-        el.className = "status err"; el.textContent = `❌ ${e.message}`;
+        document.getElementById("analysisStatus").className = "status err";
+        document.getElementById("analysisStatus").textContent = `❌ ${e.message}`;
+        btn.disabled = false;
       }
     }
 
-    // ---- 2. Search ----
-    async function searchCards() {
-      const el = document.getElementById("searchStatus");
-      el.className = "status"; el.textContent = "搜索中…";
-      try {
-        const q = document.getElementById("q").value;
-        const data = await api(`/api/cards?q=${encodeURIComponent(q)}`);
-        showJson("searchResult", data);
-        el.className = "status ok"; el.textContent = `✅ 找到 ${data.count ?? data.results?.length ?? 0} 条`;
-      } catch (e) { el.className = "status err"; el.textContent = `❌ ${e.message}`; }
-    }
-
-    async function listSkills() {
-      const el = document.getElementById("searchStatus");
-      try {
-        const data = await api("/api/skills");
-        showJson("searchResult", data);
-        el.className = "status ok"; el.textContent = `✅ ${data.count ?? 0} 个技能`;
-      } catch (e) { el.className = "status err"; el.textContent = `❌ ${e.message}`; }
-    }
-
-    // ---- 3. Execute (async task + SSE) ----
-    let currentTask = null;
-    async function execute() {
-      const el = document.getElementById("execStatus");
+    // ---- Run analysis ----
+    async function runAnalysis() {
+      const type = document.getElementById("analysisType").value;
+      const el = document.getElementById("analysisStatus");
       const fill = document.getElementById("progressFill");
-      el.className = "status"; el.textContent = "提交任务…";
       document.getElementById("progressBar").classList.remove("hidden");
+      document.getElementById("resultPanel").classList.add("hidden");
       fill.style.width = "0%";
+      el.className = "status";
+      el.textContent = "提交分析任务…";
       try {
-        const card = document.getElementById("card").value;
+        const skill = type === "change" ? "ndvi-change" : "ndvi";
+        const params = type === "ndvi-2015" ? { year: "2015" }
+          : type === "ndvi-2025" ? { year: "2025" } : {};
         const data = await api("/api/execute", {
           method: "POST",
-          body: JSON.stringify({
-            skill: document.getElementById("skill").value || "ndvi",
-            geocards: card ? [card] : [],
-          }),
+          body: JSON.stringify({ skill, params }),
         });
-        currentTask = data.task_id;
-        el.className = "status"; el.textContent = `任务 ${data.task_id.slice(0, 8)}… 已入队，监听 SSE`;
-        await streamTask(data.task_id, fill, el);
+        el.textContent = `任务 ${data.task_id.slice(0, 8)}… 执行中`;
+        const state = await pollTask(data.task_id, fill, el);
+        renderResult(state.result, type);
+        el.className = "status ok";
+        el.textContent = "✅ 分析完成";
       } catch (e) {
-        el.className = "status err"; el.textContent = `❌ ${e.message}`;
+        el.className = "status err";
+        el.textContent = `❌ ${e.message}`;
         document.getElementById("progressBar").classList.add("hidden");
       }
     }
 
-    function streamTask(taskId, fill, el) {
-      return new Promise((resolve, reject) => {
-        const es = new EventSource(`${BASE}/api/tasks/${taskId}/stream`, {
-          headers: { Authorization: `Bearer ${TOKEN}` },
-        });
-        es.onmessage = (ev) => {
-          const state = JSON.parse(ev.data);
-          fill.style.width = `${Math.round((state.progress || 0) * 100)}%`;
-          if (state.message) el.textContent = `⏳ ${state.message}`;
-          if (state.status === "done") {
-            es.close();
-            el.className = "status ok";
-            el.textContent = `✅ 完成`;
-            showJson("execResult", { status: "done", result: state.result });
-            resolve();
-          } else if (state.status === "failed") {
-            es.close();
-            el.className = "status err";
-            el.textContent = `❌ 失败: ${state.error}`;
-            showJson("execResult", state);
-            reject(new Error(state.error));
-          } else if (state.status === "cancelled") {
-            es.close();
-            el.className = "status warn";
-            el.textContent = `⚠️ 已取消`;
-            resolve();
-          }
-        };
-        es.onerror = () => {
-          // EventSource doesn't send Authorization headers; fall back to polling.
-          es.close();
-          pollTask(taskId, fill, el).then(resolve, reject);
-        };
-      });
-    }
-
     async function pollTask(taskId, fill, el) {
-      for (let i = 0; i < 200; i++) {
+      for (let i = 0; i < 400; i++) {
         const state = await api(`/api/tasks/${taskId}`);
-        fill.style.width = `${Math.round((state.progress || 0) * 100)}%`;
-        if (state.status === "done") {
-          el.className = "status ok"; el.textContent = `✅ 完成`;
-          showJson("execResult", { status: "done", result: state.result });
-          return;
-        }
-        if (state.status === "failed") {
-          el.className = "status err"; el.textContent = `❌ 失败: ${state.error}`;
-          showJson("execResult", state);
-          throw new Error(state.error);
-        }
-        await new Promise(r => setTimeout(r, 500));
+        if (state.progress) fill.style.width = `${Math.round(state.progress * 100)}%`;
+        if (state.status === "done") { fill.style.width = "100%"; return state; }
+        if (state.status === "failed") throw new Error(state.error || "任务失败");
+        await new Promise(r => setTimeout(r, 250));
       }
       throw new Error("轮询超时");
     }
 
-    async function cancelTask() {
-      if (!currentTask) return;
-      try {
-        await api(`/api/tasks/${currentTask}/cancel`, { method: "POST" });
-        document.getElementById("execStatus").textContent = "已发送取消请求";
-      } catch (e) {
-        document.getElementById("execStatus").textContent = `❌ ${e.message}`;
+    // ---- Render result ----
+    function renderResult(result, type) {
+      const panel = document.getElementById("resultPanel");
+      const body = document.getElementById("resultBody");
+      panel.classList.remove("hidden");
+      const outputs = result.outputs || {};
+      const stats = outputs.stats || {};
+      clearLayers();
+
+      if (type === "change") {
+        // Change detection: two NDVI rasters + change stats.
+        body.innerHTML = `
+          <div class="stat-cards">
+            <div class="stat-card"><div class="k">2015 均值 NDVI</div><div class="v">${fmt(stats.ndvi_2015_mean)}</div></div>
+            <div class="stat-card"><div class="k">2025 均值 NDVI</div><div class="v">${fmt(stats.ndvi_2025_mean)}</div></div>
+            <div class="stat-card"><div class="k">变化均值</div><div class="v">${fmt(stats.change_mean)}</div></div>
+            <div class="stat-card"><div class="k">退化像元</div><div class="v">${stats.degraded_pixels ?? "-"}</div></div>
+          </div>
+          <table style="margin-top:10px">
+            <tr><th>指标</th><th class="num">2015</th><th class="num">2025</th></tr>
+            <tr><td>NDVI 均值</td><td class="num">${fmt(stats.ndvi_2015_mean)}</td><td class="num">${fmt(stats.ndvi_2025_mean)}</td></tr>
+            <tr><td>NDVI 中位数</td><td class="num">${fmt(stats.ndvi_2015_median)}</td><td class="num">${fmt(stats.ndvi_2025_median)}</td></tr>
+            <tr><td>NDVI 标准差</td><td class="num">${fmt(stats.ndvi_2015_std)}</td><td class="num">${fmt(stats.ndvi_2025_std)}</td></tr>
+          </table>
+          <div class="legend">
+            <span><i style="background:#4ade80"></i>2015 健康</span>
+            <span><i style="background:#f87171"></i>2025 退化</span>
+            <span><i style="background:#fbbf24"></i>变化区（NDVI 下降）</span>
+          </div>`;
+        // Visualize the change on the map with a simple gradient overlay.
+        drawChangeLayer();
+      } else {
+        // Single-period NDVI.
+        const year = type.endsWith("2015") ? "2015" : "2025";
+        const healthy = year === "2015";
+        body.innerHTML = `
+          <div class="stat-cards">
+            <div class="stat-card"><div class="k">${year} NDVI 均值</div><div class="v">${fmt(stats.mean)}</div></div>
+            <div class="stat-card"><div class="k">中位数</div><div class="v">${fmt(stats.median)}</div></div>
+            <div class="stat-card"><div class="k">标准差</div><div class="v">${fmt(stats.std)}</div></div>
+            <div class="stat-card"><div class="k">范围</div><div class="v">${fmt(stats.min)}–${fmt(stats.max)}</div></div>
+          </div>
+          <div class="legend">
+            <span><i style="background:${healthy ? "#4ade80" : "#f87171"}"></i>
+            ${healthy ? "健康植被（高 NDVI）" : "植被退化（NDVI 下降）"}</span>
+          </div>`;
+        drawNdviLayer(healthy);
       }
+      document.getElementById("overlayHint").textContent =
+        `已显示：${type === "change" ? "2015→2025 变化" : type.endsWith("2015") ? "2015 NDVI" : "2025 NDVI"}`;
     }
 
-    // ---- 4. Goal (reflective v1.1) ----
-    let REFLECTIVE = true;
-    function toggleReflective() {
-      REFLECTIVE = !REFLECTIVE;
-      const btn = document.getElementById("reflectiveBtn");
-      btn.textContent = `反射执行: ${REFLECTIVE ? "开" : "关"}`;
+    function drawNdviLayer(healthy) {
+      // Semi-transparent study-area fill coloured by regime (illustrative:
+      // real code would overlay the actual NDVI GeoTIFF via a tile/COG layer).
+      const color = healthy ? "rgba(74,222,128,0.28)" : "rgba(248,113,113,0.28)";
+      currentLayer = L.rectangle(AMAZON_BBOX, {
+        color: healthy ? "#4ade80" : "#f87171",
+        weight: 1, fillColor: color, fillOpacity: 0.5,
+      }).addTo(map);
     }
 
-    async function runGoal() {
-      const el = document.getElementById("goalStatus");
-      el.className = "status"; el.textContent = "提交目标…";
-      try {
-        const data = await api("/api/goals", {
-          method: "POST",
-          body: JSON.stringify({
-            text: document.getElementById("goalText").value,
-            reflective: REFLECTIVE,
-          }),
-        });
-        el.className = "status"; el.textContent = `目标任务 ${data.task_id.slice(0, 8)}… 已入队`;
-        const state = await pollTask(data.task_id, document.getElementById("progressFill"), el);
-        showJson("goalResult", state);
-        // Highlight the v1.1 self-assessment when present.
-        const ev = state.result && state.result.evaluation;
-        if (ev) {
-          const emoji = ev.satisfied ? "✅" : "⚠️";
-          el.className = `status ${ev.satisfied ? "ok" : "warn"}`;
-          el.textContent = `${emoji} 目标完成 · 自评 ${ev.score}/100 · ${ev.notes}`;
-        } else {
-          el.className = "status ok";
-          el.textContent = `✅ 目标任务完成${REFLECTIVE ? "（反射执行）" : "（确定性执行）"}`;
-        }
-      } catch (e) {
-        el.className = "status err"; el.textContent = `❌ ${e.message}（LLM 未配置时为预期行为）`;
+    function drawChangeLayer() {
+      // Degradation corridor (illustrative): denser degradation toward the SE.
+      const pts = [
+        [[-14.5, -73.0], [-13.8, -71.5]],
+        [[-12.5, -70.0], [-11.6, -68.2]],
+        [[-9.8, -66.5], [-8.9, -64.8]],
+        [[-6.9, -62.5], [-6.0, -60.8]],
+        [[-4.8, -58.5], [-4.0, -57.0]],
+      ];
+      const group = L.layerGroup();
+      for (const [a, b] of pts) {
+        L.polyline([a, b], { color: "#fbbf24", weight: 3, opacity: 0.7 }).addTo(group);
       }
+      group.addTo(map);
+      currentLayer = group;
     }
 
-    // ---- 5. MCP imported skills (v1.1) ----
-    async function listMcpSkills() {
-      const el = document.getElementById("mcpStatus");
-      el.className = "status"; el.textContent = "查询 MCP 导入技能…";
-      try {
-        const data = await api("/api/skills");
-        const mcp = (data.skills || []).filter(s => (s.skill ? s.skill.name : s.name || "").startsWith("mcp-"));
-        showJson("mcpResult", { count: mcp.length, skills: mcp });
-        el.className = "status ok";
-        el.textContent = `✅ 发现 ${mcp.length} 个 MCP 导入技能（mcp- 前缀）`;
-        if (mcp.length) {
-          const name = mcp[0].skill ? mcp[0].skill.name : mcp[0].name;
-          el.textContent += ` · 执行 ${name}…`;
-          try {
-            const exec = await api("/api/execute", {
-              method: "POST",
-              body: JSON.stringify({ skill: name }),
-            });
-            const state = await pollTask(exec.task_id,
-              document.getElementById("progressFill"),
-              document.getElementById("mcpExecStatus"));
-            showJson("mcpResult", { count: mcp.length, skills: mcp, executed: state });
-            document.getElementById("mcpExecStatus").className = "status ok";
-            document.getElementById("mcpExecStatus").textContent = `✅ ${name} 执行完成`;
-          } catch (err) {
-            document.getElementById("mcpExecStatus").className = "status err";
-            document.getElementById("mcpExecStatus").textContent = `❌ ${name} 执行失败: ${err.message}`;
-          }
-        }
-      } catch (e) {
-        el.className = "status err"; el.textContent = `❌ ${e.message}`;
+    function clearLayers() {
+      if (currentLayer) {
+        map.removeLayer(currentLayer);
+        currentLayer = null;
       }
+      map.fitBounds(AMAZON_BBOX);
     }
 
-    function showJson(id, data) {
-      const pre = document.getElementById(id);
-      pre.classList.remove("hidden");
-      pre.textContent = JSON.stringify(data, null, 2);
+    function fmt(v) {
+      if (v === undefined || v === null) return "-";
+      return Number(v).toFixed(3);
     }
+
+    initMap();
   </script>
 </body>
 </html>

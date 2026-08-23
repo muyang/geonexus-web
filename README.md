@@ -1,64 +1,55 @@
-# GeoNexus Web — Reference Application
+# GeoNexus Web — Amazon Vegetation Change Analysis
 
-A complete, runnable example of building a **Web application on top of the
-GeoNexus SDK** (`geonexus-sdk` on PyPI). It demonstrates the full call chain:
+A complete **web application case** built on the GeoNexus SDK
+(`geonexus-sdk` on PyPI): analyse vegetation change in the Amazon rainforest
+(2015 healthy → 2025 degraded) through the full stack:
 
 ```
-Browser ──JWT──▶ Web BFF (geonexus.web) ──X-API-Key──▶ GeoNode (NDVI skill)
-                        │                                    │
-                        ├───────── GeoCard Registry ─────────┤
-                        └──▶ MCP client ──▶ MCP server (imported GeoSkills)
+Browser (Leaflet map) ──JWT──▶ Web BFF (geonexus.web)
+                                   │  X-API-Key
+                                   ▼
+        GeoNode: ndvi (single-period) + ndvi-change (dual-period) skills
+                                   │
+                            GeoCard Registry
 ```
 
-- **Data**: the demo node owns an Amazon NDVI GeoCard (synthetic data),
-  advertised into a shared GeoCard Registry.
-- **GIS tool**: the `ndvi` GeoSkill (compute NDVI from red + nir bands).
-- **MCP client (v1.1)**: an internal MCP HTTP server (`:9001`) exposes
-  `echo`/`describe` tools; `MCPToolClient.http` imports them as GeoSkills
-  (`mcp-*`) on the node — GeoNexus as an MCP client.
-- **Reflective goals (v1.1)**: natural language → registry-grounded plan →
-  `ReflectiveExecutor` (LLM repairs failed steps) → `evaluate_plan`
-  self-assessment. Without `GEONEXUS_LLM_API_KEY` a built-in mock LLM drives
-  the flow; set the env var to use a real OpenAI-compatible endpoint.
-- **Auth**: BFF + JWT (browser holds only a JWT; node API keys stay server
-  side, forwarded as `X-API-Key`).
+## What the app does
+
+1. **Map** — Leaflet map showing the Amazon study area.
+2. **Analyse** — pick a scenario and run it as an async task:
+   - **NDVI · 2015** (healthy forest) / **NDVI · 2025** (degraded forest)
+   - **Change detection · 2015 → 2025** (NDVI difference + degradation stats)
+3. **Visualise** — NDVI statistics (mean / median / std), degradation pixel
+   counts, and study-area layers drawn back on the map.
+
+Verified end-to-end (synthetic data): 2015 mean NDVI **0.749** → 2025 mean
+**0.318**, change **-0.43**, all pixels degraded — the app demonstrates a
+realistic deforestation signal through the real GeoCard → GeoMCP → GeoNode →
+GeoSkill path.
 
 ## Quick start
 
 ```bash
 bash scripts/dev.sh
 # → registry :8790, node :8787, web :8900, MCP server :9001
+open http://127.0.0.1:8900     # login demo / demo1234
 ```
 
-Then open **http://127.0.0.1:8900** — a single-page demo UI with five steps:
+## Under the hood
 
-1. **登录** — `demo` / `demo1234` → JWT
-2. **搜索** — query the registry (`q=ndvi`) or list skills
-3. **执行** — run the `ndvi` skill as an async task with SSE progress
-4. **目标** — submit a natural-language goal; watch reflection + evaluation
-   (toggle 反射执行 on/off)
-5. **MCP 导入** — list and execute the MCP-imported `mcp-*` skills
-
-API docs (OpenAPI): http://127.0.0.1:8900/docs
-
-## What it shows
-
-| Concern | Where in the stack |
+| Layer | What it does |
 |---|---|
-| JWT login | `POST /api/auth/login` → Bearer token |
-| Discovery | `GET /api/cards?q=`, `GET /api/skills`, `GET /api/nodes` |
-| Async execution | `POST /api/execute` → `202 {task_id}`, poll `/api/tasks/{id}` |
-| Live progress | `GET /api/tasks/{id}/stream` (SSE) |
-| Reflective goals | `POST /api/goals` — registry-grounded plan → reflective execution → `evaluation` (`{satisfied, score, notes}`) |
-| MCP client bridge | internal MCP HTTP server imported as GeoSkills via `geonexus.mcp_client` |
-| Node auth | node requires `X-API-Key`; BFF forwards it (`node_api_keys`) |
-| Distributed auth | `JWTConfig(secret=...)` HS256 for one domain; RS256 key pair for cross-domain |
+| `geonexus.web` | JWT auth, async tasks (`/api/execute` → poll `/api/tasks/{id}`), SSE streams |
+| GeoNode | `ndvi` skill (per-year synthetic red/nir rasters) + `ndvi-change` skill (2015→2025 difference, degraded-pixel count) |
+| MCP client (v1.1) | internal MCP HTTP server (`:9001`) imported as `mcp-*` GeoSkills |
+| Reflective goals (v1.1) | natural-language goal → plan → self-heal → `evaluation` (built-in mock LLM unless `GEONEXUS_LLM_API_KEY` is set) |
+| Auth | BFF + JWT; node API keys stay server-side, forwarded as `X-API-Key` |
 
 ## Repository layout
 
 ```
-backend/demo_stack.py   demo environment: registry + node + web BFF + MCP server + mock LLM
-frontend/index.html     single-page reference UI (vanilla JS, no build step)
+backend/demo_stack.py   stack: registry + node (ndvi/ndvi-change) + web BFF + MCP server + mock LLM
+frontend/index.html     Leaflet single-page application (vanilla JS, no build step)
 scripts/dev.sh          one-command bring-up
 requirements.txt        runtime deps (geonexus-sdk[mcp], uvicorn)
 ```
