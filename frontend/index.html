@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GeoNexus — 亚马逊雨林植被变化分析</title>
+  <title>GeoNexus — GeoCard 资源协调演示</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     :root {
       --bg: #0b1220; --panel: #151f31; --panel2: #1b2740; --border: #2a3a55;
-      --text: #e2e8f0; --muted: #8ba3c7; --accent: #38bdf8; --accent2: #22d3ee;
-      --ok: #4ade80; --err: #f87171; --warn: #fbbf24;
+      --text: #e2e8f0; --muted: #8ba3c7; --accent: #38bdf8; --ok: #4ade80;
+      --err: #f87171; --warn: #fbbf24;
     }
     * { box-sizing: border-box; }
     body {
@@ -34,24 +34,17 @@
     main { display: flex; gap: 14px; padding: 14px 22px; height: calc(100vh - 118px); }
     .map-wrap { flex: 1; min-width: 0; position: relative; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
     #map { width: 100%; height: 100%; background: #0d1526; }
-    .side {
-      width: 340px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto;
-    }
-    .panel {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-      padding: 14px 16px;
-    }
-    .panel h2 {
-      font-size: 12px; margin: 0 0 10px; color: var(--muted);
-      text-transform: uppercase; letter-spacing: .08em;
-      display: flex; align-items: center; gap: 6px;
-    }
+    .side { width: 440px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+    .panel h2 { font-size: 12px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
     .field { margin-bottom: 10px; }
     .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-    select, input[type=text] {
+    select, input[type=text], input[type=number] {
       width: 100%; background: var(--panel2); border: 1px solid var(--border);
-      color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: 13px;
+      color: var(--text); border-radius: 8px; padding: 7px 9px; font-size: 13px;
     }
+    .row { display: flex; gap: 8px; }
+    .row .field { flex: 1; }
     button {
       background: var(--accent); color: #062033; border: none; border-radius: 8px;
       padding: 9px 14px; font-size: 13px; font-weight: 600; cursor: pointer; width: 100%;
@@ -61,18 +54,36 @@
     .status { font-size: 12px; margin-top: 8px; min-height: 16px; }
     .ok { color: var(--ok); } .err { color: var(--err); } .warn { color: var(--warn); }
     .progress { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 8px; }
-    .progress > div { height: 100%; width: 0; background: var(--accent2); transition: width .3s; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--border); }
-    th { color: var(--muted); font-weight: 500; }
-    td.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .stat-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .stat-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
-    .stat-card .k { font-size: 10px; color: var(--muted); }
-    .stat-card .v { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .legend { font-size: 11px; color: var(--muted); margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
-    .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 4px; vertical-align: -2px; }
+    .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
     .hidden { display: none !important; }
+    /* Timeline */
+    .timeline { position: relative; margin-top: 6px; }
+    .tl-step { position: relative; padding: 0 0 14px 26px; border-left: 2px solid var(--border); margin-left: 8px; }
+    .tl-step:last-child { border-left-color: transparent; }
+    .tl-dot {
+      position: absolute; left: -8px; top: 0; width: 14px; height: 14px; border-radius: 50%;
+      background: var(--panel2); border: 2px solid var(--border);
+    }
+    .tl-step.ok .tl-dot { background: var(--ok); border-color: var(--ok); }
+    .tl-step.fail .tl-dot { background: var(--err); border-color: var(--err); }
+    .tl-step.warn .tl-dot { background: var(--warn); border-color: var(--warn); }
+    .tl-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .tl-title { font-size: 13px; font-weight: 600; }
+    .tl-badge { font-size: 10px; padding: 1px 8px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--border); }
+    .tl-step.ok .tl-badge { color: var(--ok); border-color: var(--ok); }
+    .tl-step.fail .tl-badge { color: var(--err); border-color: var(--err); }
+    .tl-body { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .tl-body pre {
+      background: #0b1220; border: 1px solid var(--border); border-radius: 6px;
+      padding: 8px; overflow: auto; font-size: 11px; max-height: 240px; color: var(--text);
+    }
+    .tl-body ul { margin: 4px 0; padding-left: 16px; }
+    .tl-body li { margin: 2px 0; }
+    .tl-caret { color: var(--muted); font-size: 10px; transition: transform .2s; }
+    .tl-step.open .tl-caret { transform: rotate(90deg); }
+    .tl-body { display: none; }
+    .tl-step.open .tl-body { display: block; }
+    .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
     .overlay {
       position: absolute; top: 12px; left: 12px; z-index: 1000;
       background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
@@ -80,12 +91,14 @@
     }
     .overlay .t { color: var(--text); font-weight: 600; }
     footer { padding: 8px 22px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); }
+    .legend { font-size: 11px; color: var(--muted); margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 4px; vertical-align: -2px; }
   </style>
 </head>
 <body>
   <header>
-    <h1>🌿 GeoNexus · 亚马逊雨林植被变化分析</h1>
-    <span class="sub">GeoCard → GeoMCP → GeoNode → GeoSkill → 结果</span>
+    <h1>🧭 GeoNexus · GeoCard 资源协调</h1>
+    <span class="sub">检索 → 契约匹配 → 算力协调 → 规划 → 执行（多节点）</span>
     <span class="spacer"></span>
     <div class="login-box" id="loginBox">
       <input id="user" value="demo" placeholder="用户">
@@ -98,68 +111,82 @@
   <main>
     <div class="map-wrap">
       <div id="map"></div>
-      <div class="overlay" id="mapOverlay">
+      <div class="overlay">
         <span class="t">研究区：亚马逊雨林</span><br>
-        <span id="overlayHint">选择分析类型后点击「运行分析」</span>
+        <span id="overlayHint">数据节点 A(2015) · 数据节点 B(2025) · 算力节点(GPU)</span>
       </div>
     </div>
 
     <div class="side">
-      <!-- 分析控制 -->
+      <!-- 需求输入 -->
       <div class="panel" id="controlPanel">
-        <h2>🔬 分析控制</h2>
+        <h2>🎯 协调请求</h2>
         <div class="field">
-          <label>分析类型</label>
-          <select id="analysisType">
-            <option value="ndvi-2015">NDVI · 2015（健康森林）</option>
-            <option value="ndvi-2025">NDVI · 2025（退化森林）</option>
-            <option value="change" selected>变化检测 · 2015 → 2025</option>
+          <label>目标能力（capability）</label>
+          <select id="capability">
+            <option value="change-detection" selected>change-detection（变化检测）</option>
+            <option value="ndvi">ndvi（单时相 NDVI）</option>
           </select>
         </div>
-        <button id="runBtn" onclick="runAnalysis()" disabled>运行分析</button>
+        <div class="row">
+          <div class="field"><label>开始</label><input id="start" value="2015-01-01"></div>
+          <div class="field"><label>结束</label><input id="end" value="2025-12-31"></div>
+        </div>
+        <div class="field">
+          <label>资源要求</label>
+          <select id="requireGpu">
+            <option value="true" selected>需 GPU（模型 runtime: gpu=cuda）</option>
+            <option value="false">不限（CPU 即可）</option>
+          </select>
+        </div>
+        <button id="runBtn" onclick="runCoordinate()" disabled>运行协调流程</button>
         <div class="progress hidden" id="progressBar"><div id="progressFill"></div></div>
-        <div class="status" id="analysisStatus">请先登录</div>
+        <div class="status" id="coordStatus">请先登录</div>
       </div>
 
-      <!-- 结果 -->
-      <div class="panel hidden" id="resultPanel">
-        <h2>📊 分析结果</h2>
-        <div id="resultBody"></div>
-        <button class="ghost" style="margin-top:10px" onclick="clearLayers()">清除图层</button>
+      <!-- 协调时间线 -->
+      <div class="panel hidden" id="timelinePanel">
+        <h2>🔄 GeoCard 协调流程</h2>
+        <div class="timeline" id="timeline"></div>
+        <button class="ghost" style="margin-top:10px" onclick="document.getElementById('timelinePanel').classList.add('hidden')">收起</button>
       </div>
 
-      <!-- 技术说明 -->
       <div class="panel">
-        <h2>ℹ️ 技术栈</h2>
-        <div style="font-size:12px;color:var(--muted);line-height:1.7">
-          浏览器 ──JWT──▶ Web BFF ──X-API-Key──▶ GeoNode<br>
-          技能：<b style="color:var(--text)">ndvi</b>（单时相）、<b style="color:var(--text)">ndvi-change</b>（双时相）<br>
-          编排：异步任务 + SSE 进度 · 数据：合成栅格（明示非真实卫星数据）
+        <h2>ℹ️ 架构</h2>
+        <div style="font-size:12px;color:var(--muted);line-height:1.8">
+          <b style="color:var(--text)">data-node-a</b> :8787 — 2015 时相<br>
+          <b style="color:var(--text)">data-node-b</b> :8788 — 2025 时相<br>
+          <b style="color:var(--text)">compute-node</b> :8789 — 变化检测模型（GPU）<br>
+          三类卡片：<span style="color:var(--ok)">data</span> · <span style="color:var(--accent)">model</span> · <span style="color:var(--warn)">compute</span><br>
+          数据主权：NDVI 在各自数据节点计算 → 模型在算力节点执行
         </div>
       </div>
     </div>
   </main>
 
-  <footer>GeoNexus Reference Application — synthetic demo data; production uses real Sentinel-2 via the same GeoCard/GeoMCP path.</footer>
+  <footer>GeoNexus Resource Coordination demo — synthetic data; shows how GeoCards retrieve, match and coordinate data / model / compute.</footer>
 
   <script>
     const BASE = "";
-    const AMAZON_BBOX = [[-15.0, -73.9], [5.0, -44.0]];  // [[south, west], [north, east]]
+    const AMAZON_BBOX = [[-15.0, -73.9], [5.0, -44.0]];
     let TOKEN = null;
     let map = null;
-    let currentLayer = null;
 
-    // ---- Map init ----
     function initMap() {
       map = L.map("map", { zoomControl: true }).fitBounds(AMAZON_BBOX);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 18, attribution: "© OpenStreetMap",
       }).addTo(map);
-      // Study-area rectangle.
       L.rectangle(AMAZON_BBOX, { color: "#38bdf8", weight: 2, dashArray: "4 4" }).addTo(map);
+      // Node markers.
+      L.circleMarker([-8, -66], { radius: 8, color: "#4ade80", fillOpacity: .6 }).addTo(map)
+        .bindPopup("<b>data-node-a</b><br>2015 时相 · :8787");
+      L.circleMarker([-10, -60], { radius: 8, color: "#f87171", fillOpacity: .6 }).addTo(map)
+        .bindPopup("<b>data-node-b</b><br>2025 时相 · :8788");
+      L.circleMarker([-4, -65], { radius: 9, color: "#fbbf24", fillOpacity: .6 }).addTo(map)
+        .bindPopup("<b>compute-node</b><br>变化检测模型 (GPU) · :8789");
     }
 
-    // ---- API helper ----
     async function api(path, opts = {}) {
       const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
       if (TOKEN) headers["Authorization"] = `Bearer ${TOKEN}`;
@@ -170,7 +197,6 @@
       return data;
     }
 
-    // ---- Login ----
     async function login() {
       const btn = document.getElementById("loginBtn");
       btn.disabled = true;
@@ -188,38 +214,37 @@
         document.getElementById("loginBox").querySelectorAll("input").forEach(i => i.disabled = true);
         btn.classList.add("hidden");
         document.getElementById("runBtn").disabled = false;
-        document.getElementById("analysisStatus").textContent = "就绪 — 选择分析类型并运行";
-        document.getElementById("analysisStatus").className = "status ok";
+        document.getElementById("coordStatus").textContent = "就绪 — 提交协调请求";
+        document.getElementById("coordStatus").className = "status ok";
       } catch (e) {
-        document.getElementById("analysisStatus").className = "status err";
-        document.getElementById("analysisStatus").textContent = `❌ ${e.message}`;
+        document.getElementById("coordStatus").className = "status err";
+        document.getElementById("coordStatus").textContent = `❌ ${e.message}`;
         btn.disabled = false;
       }
     }
 
-    // ---- Run analysis ----
-    async function runAnalysis() {
-      const type = document.getElementById("analysisType").value;
-      const el = document.getElementById("analysisStatus");
+    async function runCoordinate() {
+      const el = document.getElementById("coordStatus");
       const fill = document.getElementById("progressFill");
       document.getElementById("progressBar").classList.remove("hidden");
-      document.getElementById("resultPanel").classList.add("hidden");
+      document.getElementById("timelinePanel").classList.add("hidden");
       fill.style.width = "0%";
       el.className = "status";
-      el.textContent = "提交分析任务…";
+      el.textContent = "运行 GeoCard 协调流程…";
       try {
-        const skill = type === "change" ? "ndvi-change" : "ndvi";
-        const params = type === "ndvi-2015" ? { year: "2015" }
-          : type === "ndvi-2025" ? { year: "2025" } : {};
-        const data = await api("/api/execute", {
-          method: "POST",
-          body: JSON.stringify({ skill, params }),
-        });
-        el.textContent = `任务 ${data.task_id.slice(0, 8)}… 执行中`;
-        const state = await pollTask(data.task_id, fill, el);
-        renderResult(state.result, type);
+        const body = {
+          capability: document.getElementById("capability").value,
+          bbox: [-73.9, -15.0, -44.0, 5.0],
+          start: document.getElementById("start").value,
+          end: document.getElementById("end").value,
+          require_gpu: document.getElementById("requireGpu").value === "true",
+        };
+        const report = await api("/api/coordinate", { method: "POST", body: JSON.stringify(body) });
+        renderTimeline(report);
+        document.getElementById("timelinePanel").classList.remove("hidden");
+        fill.style.width = "100%";
         el.className = "status ok";
-        el.textContent = "✅ 分析完成";
+        el.textContent = "✅ 协调流程完成";
       } catch (e) {
         el.className = "status err";
         el.textContent = `❌ ${e.message}`;
@@ -227,107 +252,85 @@
       }
     }
 
-    async function pollTask(taskId, fill, el) {
-      for (let i = 0; i < 400; i++) {
-        const state = await api(`/api/tasks/${taskId}`);
-        if (state.progress) fill.style.width = `${Math.round(state.progress * 100)}%`;
-        if (state.status === "done") { fill.style.width = "100%"; return state; }
-        if (state.status === "failed") throw new Error(state.error || "任务失败");
-        await new Promise(r => setTimeout(r, 250));
-      }
-      throw new Error("轮询超时");
-    }
-
-    // ---- Render result ----
-    function renderResult(result, type) {
-      const panel = document.getElementById("resultPanel");
-      const body = document.getElementById("resultBody");
-      panel.classList.remove("hidden");
-      const outputs = result.outputs || {};
-      const stats = outputs.stats || {};
-      clearLayers();
-
-      if (type === "change") {
-        // Change detection: two NDVI rasters + change stats.
-        body.innerHTML = `
-          <div class="stat-cards">
-            <div class="stat-card"><div class="k">2015 均值 NDVI</div><div class="v">${fmt(stats.ndvi_2015_mean)}</div></div>
-            <div class="stat-card"><div class="k">2025 均值 NDVI</div><div class="v">${fmt(stats.ndvi_2025_mean)}</div></div>
-            <div class="stat-card"><div class="k">变化均值</div><div class="v">${fmt(stats.change_mean)}</div></div>
-            <div class="stat-card"><div class="k">退化像元</div><div class="v">${stats.degraded_pixels ?? "-"}</div></div>
+    function renderTimeline(report) {
+      const tl = document.getElementById("timeline");
+      tl.innerHTML = "";
+      for (const step of report.steps || []) {
+        const cls = step.status === "ok" ? "ok" : step.status === "fail" ? "fail" : "warn";
+        const el = document.createElement("div");
+        el.className = `tl-step ${cls}`;
+        el.innerHTML = `
+          <div class="tl-dot"></div>
+          <div class="tl-head">
+            <span class="tl-caret">▶</span>
+            <span class="tl-title">${step.title}</span>
+            <span class="tl-badge">${step.status}</span>
           </div>
-          <table style="margin-top:10px">
-            <tr><th>指标</th><th class="num">2015</th><th class="num">2025</th></tr>
-            <tr><td>NDVI 均值</td><td class="num">${fmt(stats.ndvi_2015_mean)}</td><td class="num">${fmt(stats.ndvi_2025_mean)}</td></tr>
-            <tr><td>NDVI 中位数</td><td class="num">${fmt(stats.ndvi_2015_median)}</td><td class="num">${fmt(stats.ndvi_2025_median)}</td></tr>
-            <tr><td>NDVI 标准差</td><td class="num">${fmt(stats.ndvi_2015_std)}</td><td class="num">${fmt(stats.ndvi_2025_std)}</td></tr>
-          </table>
-          <div class="legend">
-            <span><i style="background:#4ade80"></i>2015 健康</span>
-            <span><i style="background:#f87171"></i>2025 退化</span>
-            <span><i style="background:#fbbf24"></i>变化区（NDVI 下降）</span>
-          </div>`;
-        // Visualize the change on the map with a simple gradient overlay.
-        drawChangeLayer();
-      } else {
-        // Single-period NDVI.
-        const year = type.endsWith("2015") ? "2015" : "2025";
-        const healthy = year === "2015";
-        body.innerHTML = `
-          <div class="stat-cards">
-            <div class="stat-card"><div class="k">${year} NDVI 均值</div><div class="v">${fmt(stats.mean)}</div></div>
-            <div class="stat-card"><div class="k">中位数</div><div class="v">${fmt(stats.median)}</div></div>
-            <div class="stat-card"><div class="k">标准差</div><div class="v">${fmt(stats.std)}</div></div>
-            <div class="stat-card"><div class="k">范围</div><div class="v">${fmt(stats.min)}–${fmt(stats.max)}</div></div>
-          </div>
-          <div class="legend">
-            <span><i style="background:${healthy ? "#4ade80" : "#f87171"}"></i>
-            ${healthy ? "健康植被（高 NDVI）" : "植被退化（NDVI 下降）"}</span>
-          </div>`;
-        drawNdviLayer(healthy);
+          <div class="tl-body">${renderStepBody(step)}</div>`;
+        el.querySelector(".tl-head").onclick = () => el.classList.toggle("open");
+        tl.appendChild(el);
       }
-      document.getElementById("overlayHint").textContent =
-        `已显示：${type === "change" ? "2015→2025 变化" : type.endsWith("2015") ? "2015 NDVI" : "2025 NDVI"}`;
     }
 
-    function drawNdviLayer(healthy) {
-      // Semi-transparent study-area fill coloured by regime (illustrative:
-      // real code would overlay the actual NDVI GeoTIFF via a tile/COG layer).
-      const color = healthy ? "rgba(74,222,128,0.28)" : "rgba(248,113,113,0.28)";
-      currentLayer = L.rectangle(AMAZON_BBOX, {
-        color: healthy ? "#4ade80" : "#f87171",
-        weight: 1, fillColor: color, fillOpacity: 0.5,
-      }).addTo(map);
-    }
-
-    function drawChangeLayer() {
-      // Degradation corridor (illustrative): denser degradation toward the SE.
-      const pts = [
-        [[-14.5, -73.0], [-13.8, -71.5]],
-        [[-12.5, -70.0], [-11.6, -68.2]],
-        [[-9.8, -66.5], [-8.9, -64.8]],
-        [[-6.9, -62.5], [-6.0, -60.8]],
-        [[-4.8, -58.5], [-4.0, -57.0]],
-      ];
-      const group = L.layerGroup();
-      for (const [a, b] of pts) {
-        L.polyline([a, b], { color: "#fbbf24", weight: 3, opacity: 0.7 }).addTo(group);
+    function renderStepBody(step) {
+      let html = "";
+      if (step.phase === "retrieve") {
+        html += "<ul>";
+        for (const c of step.data_cards || [])
+          html += `<li>📦 data <b>${c.id}</b> — ${c.name} <span class='mono'>(${c.access?.endpoint || "?"})</span></li>`;
+        for (const m of step.model_cards || [])
+          html += `<li>🧠 model <b>${m.id}</b> — runtime: ${JSON.stringify(m.runtime || {})}</li>`;
+        if (!(step.data_cards || []).length) html += "<li class='err'>未检索到数据卡片</li>";
+        html += "</ul>";
+        html += expandable("data/model 卡片原始 JSON", { data: step.data_cards, model: step.model_cards });
       }
-      group.addTo(map);
-      currentLayer = group;
-    }
-
-    function clearLayers() {
-      if (currentLayer) {
-        map.removeLayer(currentLayer);
-        currentLayer = null;
+      if (step.phase === "contract") {
+        html += "<ul>";
+        for (const e of step.entries || []) {
+          const st = e.satisfied ? "✅" : "❌";
+          html += `<li>${st} <b>${e.card_id}</b> — ${e.reasons?.join("; ") || "ok"}</li>`;
+        }
+        html += "</ul>";
       }
-      map.fitBounds(AMAZON_BBOX);
+      if (step.phase === "resource") {
+        const m = step.match || {};
+        html += `<ul>`;
+        for (const cap of step.compute_capabilities || [])
+          html += `<li>🖥️ compute <b>${cap.node_url}</b> — cpu ${cap.cpu ?? "?"} · mem ${cap.memory_gb ?? "?"}Gi · gpu ${cap.gpu ?? "?"}</li>`;
+        html += `<li>${m.matched ? "✅" : "❌"} 匹配结果: ${m.matched ? "模型可运行于 " + m.compute_node : "无满足算力的节点"}</li>`;
+        for (const r of m.reasons || []) html += `<li class='mono' style='font-size:11px'>· ${r}</li>`;
+        html += "</ul>";
+      }
+      if (step.phase === "plan") {
+        html += "<ul>";
+        for (const s of step.steps || [])
+          html += `<li>step${s.step_id}: <b>${s.skill}</b> @ ${s.node_url} ${s.depends_on ? `(依赖 ${s.depends_on.join(",")})` : ""}</li>`;
+        if (!(step.steps || []).length) html += "<li class='err'>无可执行计划（前置阶段失败）</li>";
+        html += "</ul>";
+        if (step.steps?.length) html += expandable("计划步骤 JSON", step.steps);
+      }
+      if (step.phase === "execute") {
+        const ex = step.execution || {};
+        html += `<div>状态: <b class="${ex.status === "done" ? "ok" : "warn"}">${ex.status}</b></div>`;
+        if (ex.steps) {
+          html += "<ul>";
+          for (const s of ex.steps)
+            html += `<li>step${s.step_id}: ${s.skill} → <b class="${s.status === "done" ? "ok" : "err"}">${s.status}</b> @ ${s.node_url}</li>`;
+          html += "</ul>";
+          html += expandable("执行结果 JSON", ex);
+        }
+        if (ex.error) html += `<div class='err'>${ex.error}</div>`;
+      }
+      return html;
     }
 
-    function fmt(v) {
-      if (v === undefined || v === null) return "-";
-      return Number(v).toFixed(3);
+    function expandable(label, data) {
+      return `<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--accent)">${label}</summary>
+        <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre></details>`;
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
     initMap();

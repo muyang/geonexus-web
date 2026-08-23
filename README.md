@@ -1,69 +1,61 @@
-# GeoNexus Web — Amazon Vegetation Change Analysis
+# GeoNexus Web — GeoCard Resource Coordination Demo
 
-A complete **web application case** built on the GeoNexus SDK
-(`geonexus-sdk` on PyPI): analyse vegetation change in the Amazon rainforest
-(2015 healthy → 2025 degraded) through the full stack:
+A web application that shows **how GeoCards work**: retrieving, matching and
+coordinating **data, models and compute** across multiple nodes, with a
+teaching timeline of every step.
 
 ```
-Browser (Leaflet map) ──JWT──▶ Web BFF (geonexus.web)
-                                   │  X-API-Key
-                                   ▼
-        GeoNode: ndvi (single-period) + ndvi-change (dual-period) skills
-                                   │
-                            GeoCard Registry
+Browser ──JWT──▶ Web BFF ──▶ Registry (data/model/compute GeoCards)
+                                  │
+      data-node-a :8787 (2015 scene) · data-node-b :8788 (2025 scene)
+                                  │
+      compute-node :8789 (change-detection model, GPU)
 ```
 
-## What the app does
+## The GeoCard workflow (what the app shows)
 
-1. **Map** — Leaflet map showing the Amazon study area.
-2. **Analyse** — pick a scenario and run it as an async task:
-   - **NDVI · 2015** (healthy forest) / **NDVI · 2025** (degraded forest)
-   - **Change detection · 2015 → 2025** (NDVI difference + degradation stats)
-3. **Visualise** — NDVI statistics (mean / median / std), degradation pixel
-   counts, and study-area layers drawn back on the map.
+| Step | What happens | Teaching point |
+|---|---|---|
+| ① 检索 Retrieve | registry `search(type=...)` finds data cards (2015/2025) + model card (change-detection) | cards are discoverable by type/capability/bbox/time |
+| ② 契约 Contract | `ContractValidator` checks bbox/CRS/temporal for each data card | a card must *satisfy* the request, with reasons |
+| ③ 算力 Resource | `match_resource(model.runtime, compute cards)` — model needs `gpu=cuda` → routed to GPU node | models declare runtime; compute nodes advertise capacity |
+| ④ 规划 Plan | NDVI pushdown to each data node; change runs on the compute node | data stays where it is; computation moves |
+| ⑤ 执行 Execute | multi-node execution via the deterministic planner | results return to the caller |
 
-Verified end-to-end (synthetic data): 2015 mean NDVI **0.749** → 2025 mean
-**0.318**, change **-0.43**, all pixels degraded — the app demonstrates a
-realistic deforestation signal through the real GeoCard → GeoMCP → GeoNode →
-GeoSkill path.
+Every timeline step is expandable to the raw GeoCard JSON (`access`,
+`runtime`, `provenance`, …) so the cards' role in coordination is visible.
 
 ## Quick start
 
 ```bash
 bash scripts/dev.sh
-# → registry :8790, node :8787, web :8900, MCP server :9001
+# → registry :8790 · data-a :8787 · data-b :8788 · compute :8789 · web :8900
 open http://127.0.0.1:8900     # login demo / demo1234
 ```
 
-## Under the hood
+Pick a request (capability, time window, GPU requirement), run it, and watch
+the coordination timeline. Try changing **资源要求 to 不限** or a bbox
+outside the study area to see the rejection path (contract / resource
+mismatch).
 
-| Layer | What it does |
-|---|---|
-| `geonexus.web` | JWT auth, async tasks (`/api/execute` → poll `/api/tasks/{id}`), SSE streams |
-| GeoNode | `ndvi` skill (per-year synthetic red/nir rasters) + `ndvi-change` skill (2015→2025 difference, degraded-pixel count) |
-| MCP client (v1.1) | internal MCP HTTP server (`:9001`) imported as `mcp-*` GeoSkills |
-| Reflective goals (v1.1) | natural-language goal → plan → self-heal → `evaluation` (built-in mock LLM unless `GEONEXUS_LLM_API_KEY` is set) |
-| Auth | BFF + JWT; node API keys stay server-side, forwarded as `X-API-Key` |
+## API
 
-## Repository layout
+- `POST /api/coordinate` — run the full GeoCard workflow:
+  `{capability, bbox, start, end, require_gpu}` → report with `steps[]`
+  (retrieve / contract / resource / plan / execute).
+- Standard BFF endpoints (`/api/auth/login`, `/api/cards`, `/api/execute`,
+  `/api/goals`, …) remain available.
 
-```
-backend/demo_stack.py   stack: registry + node (ndvi/ndvi-change) + web BFF + MCP server + mock LLM
-frontend/index.html     Leaflet single-page application (vanilla JS, no build step)
-scripts/dev.sh          one-command bring-up
-requirements.txt        runtime deps (geonexus-sdk[mcp], uvicorn)
-```
+## Architecture
 
-## Using it as a template
+- **data-node-a / data-node-b**: each owns one time step of the synthetic
+  Amazon scene and an `ndvi` skill — NDVI is computed *on the data's node*
+  (data sovereignty).
+- **compute-node**: hosts the `ndvi-change` model (declares
+  `runtime: gpu=cuda`); advertised as both a GPU and a CPU compute resource
+  to demonstrate resource matching / rejection.
+- **registry**: holds `data`, `model` and `compute` GeoCards + skills.
 
-The demo stack is intentionally small. To build your own app:
-
-1. Replace `build_node()` with your GeoNodes (your data + your skills).
-2. Replace the `users` dict with OIDC/SSO at the login endpoint.
-3. Put a real `JWTConfig` secret (or RS256 keys) in `WebConfig`.
-4. Point `registry_url` at your federated registries.
-5. Replace the built-in mock LLM / demo MCP server with real endpoints.
-
-See the SDK's `docs/WEB.md` for the full Web-layer reference (endpoints,
-auth model, deployment topologies), `docs/AGENT.md` for reflective
-execution, and `docs/MCP.md` for the MCP client bridge.
+SDK modules used: `geonexus.resource` (new in v1.1), `geonexus.agent`
+(planning/execution), `geonexus.web` (BFF + JWT), `geonexus.geocard`
+(ContractValidator).
