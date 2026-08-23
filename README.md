@@ -38,13 +38,28 @@ the coordination timeline. Try changing **资源要求 to 不限** or a bbox
 outside the study area to see the rejection path (contract / resource
 mismatch).
 
+## Data registration & review (v1.1)
+
+The UI also demonstrates the **data registration workflow**: upload a
+GeoTIFF → the backend auto-extracts metadata and generates a draft GeoCard
+(`geonexus.metadata`) → submit for review (registered as `pending`, hidden
+from discovery) → approve → the card becomes searchable and executable via
+GeoMCP. Reject keeps it hidden with a reviewer note.
+
+```
+POST /api/datasets/upload           (multipart file → draft GeoCard)
+POST /api/datasets/{id}/submit      (draft → pending)
+GET  /api/datasets/pending          (review queue)
+POST /api/datasets/{id}/approve|reject
+```
+
 ## API
 
 - `POST /api/coordinate` — run the full GeoCard workflow:
   `{capability, bbox, start, end, require_gpu}` → report with `steps[]`
   (retrieve / contract / resource / plan / execute).
 - Standard BFF endpoints (`/api/auth/login`, `/api/cards`, `/api/execute`,
-  `/api/goals`, …) remain available.
+  `/api/goals`, `/api/datasets/*`, …) remain available.
 
 ## Architecture
 

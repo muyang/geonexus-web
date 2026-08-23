@@ -282,6 +282,10 @@ class RunningStack:
             },
             default_node_url=f"http://127.0.0.1:{self.compute_port}",
             llm=self._llm_config(registry_url),
+            # Data registration workflow: uploaded files + registry writes.
+            datasets_dir=str(REPO_ROOT / "uploads"),
+            registry_api_key=None,  # registry has no API key in the demo
+            upload_node_url=f"http://127.0.0.1:{self.compute_port}",
         )
         self.web_app = create_web_app(config, cors_origins=["*"])
         self.install_mock_llm(self.web_app)

@@ -151,6 +151,26 @@
         <button class="ghost" style="margin-top:10px" onclick="document.getElementById('timelinePanel').classList.add('hidden')">收起</button>
       </div>
 
+      <!-- 数据登记与审核 -->
+      <div class="panel" id="uploadPanel">
+        <h2>📤 数据登记与审核</h2>
+        <div class="field">
+          <label>选择 GeoTIFF 上传（自动提取元数据 → GeoCard）</label>
+          <input type="file" id="fileInput" accept=".tif,.tiff,.cog">
+        </div>
+        <div class="row">
+          <div class="field"><label>数据集名称</label><input id="dsName" placeholder="可选"></div>
+          <div class="field"><label>能力（逗号分隔）</label><input id="dsCaps" placeholder="如 ndvi"></div>
+        </div>
+        <button id="uploadBtn" onclick="uploadDataset()" disabled>上传并生成 GeoCard</button>
+        <div class="status" id="uploadStatus"></div>
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button class="ghost" style="flex:1" onclick="loadPending()">待审核列表</button>
+          <button class="ghost" style="flex:1" onclick="refreshApproved()">已上线数据</button>
+        </div>
+        <div id="reviewList" style="margin-top:8px;font-size:12px"></div>
+      </div>
+
       <div class="panel">
         <h2>ℹ️ 架构</h2>
         <div style="font-size:12px;color:var(--muted);line-height:1.8">
@@ -214,6 +234,7 @@
         document.getElementById("loginBox").querySelectorAll("input").forEach(i => i.disabled = true);
         btn.classList.add("hidden");
         document.getElementById("runBtn").disabled = false;
+        document.getElementById("uploadBtn").disabled = false;
         document.getElementById("coordStatus").textContent = "就绪 — 提交协调请求";
         document.getElementById("coordStatus").className = "status ok";
       } catch (e) {
@@ -221,6 +242,92 @@
         document.getElementById("coordStatus").textContent = `❌ ${e.message}`;
         btn.disabled = false;
       }
+    }
+
+    // ---- Data registration & review (v1.1) ----
+    async function uploadDataset() {
+      const el = document.getElementById("uploadStatus");
+      const file = document.getElementById("fileInput").files[0];
+      if (!file) { el.className = "status err"; el.textContent = "请选择文件"; return; }
+      el.className = "status"; el.textContent = "上传并生成 GeoCard…";
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("name", document.getElementById("dsName").value || "");
+      fd.append("capabilities", document.getElementById("dsCaps").value || "");
+      try {
+        const r = await fetch(BASE + "/api/datasets/upload", {
+          method: "POST", headers: { Authorization: `Bearer ${TOKEN}` }, body: fd,
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || JSON.stringify(data));
+        el.className = "status ok";
+        el.textContent = `✅ 已生成 draft GeoCard（id=${data.id}）— 元数据：CRS ${data.card.spatial?.crs} · bbox ${JSON.stringify(data.card.spatial?.bbox)} · ${data.card.bands?.length || 0} band(s)`;
+        // Show the card, then offer submit.
+        const submit = confirm("查看 GeoCard 后提交审核？点击确定提交为待审核 (pending)");
+        if (submit) {
+          const sr = await api(`/api/datasets/${data.id}/submit`, { method: "POST" });
+          el.textContent += ` → 已提交审核（pending）`;
+          loadPending();
+        }
+      } catch (e) {
+        el.className = "status err"; el.textContent = `❌ ${e.message}`;
+      }
+    }
+
+    async function loadPending() {
+      const el = document.getElementById("reviewList");
+      el.innerHTML = "加载待审核…";
+      try {
+        const data = await api("/api/datasets/pending");
+        if (!data.count) { el.innerHTML = "<span class='muted'>无待审核数据</span>"; return; }
+        let html = "<div style='margin-top:4px;font-weight:600;color:var(--warn)'>待审核 (" + data.count + "):</div>";
+        for (const c of data.cards) {
+          const card = c.card, id = card.id;
+          html += `<div style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-top:6px">
+            <div><b>${card.name}</b> <span class="mono" style="font-size:10px">${id}</span></div>
+            <div style="font-size:11px;color:var(--muted)">${card.description || ""}</div>
+            <div style="font-size:11px;color:var(--muted)">CRS ${card.spatial?.crs || "?"} · bands ${card.bands?.length || 0}</div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <button style="font-size:11px;padding:4px 8px;background:var(--ok);width:auto"
+                onclick="reviewCard('${id}','approve')">通过</button>
+              <button style="font-size:11px;padding:4px 8px;background:var(--err);width:auto"
+                onclick="reviewCard('${id}','reject')">拒绝</button>
+              <button class="ghost" style="font-size:11px;padding:4px 8px;width:auto"
+                onclick="showCardJson('${id}')">卡片 JSON</button>
+            </div>
+            <pre id="card-${id}" class="hidden" style="margin-top:4px">${escapeHtml(JSON.stringify(card, null, 2))}</pre>
+          </div>`;
+        }
+        el.innerHTML = html;
+      } catch (e) {
+        el.innerHTML = `<span class="err">❌ ${e.message}</span>`;
+      }
+    }
+
+    async function reviewCard(cardId, action) {
+      try {
+        await api(`/api/datasets/${cardId}/${action}`, { method: "POST" });
+        loadPending();
+        refreshApproved();
+      } catch (e) {
+        alert(`审核失败: ${e.message}`);
+      }
+    }
+
+    async function refreshApproved() {
+      try {
+        const data = await api("/api/cards");
+        const el = document.getElementById("reviewList");
+        el.innerHTML = data.count
+          ? `<span style="color:var(--ok)">已上线数据 (${data.count}): </span>` +
+            data.cards.map(c => `<span class="mono" style="font-size:11px">${c.card.id}</span>`).join(" · ")
+          : "<span class='muted'>暂无已上线数据</span>";
+      } catch (e) { /* registry list may differ */ }
+    }
+
+    function showCardJson(id) {
+      const pre = document.getElementById("card-" + id);
+      if (pre) pre.classList.toggle("hidden");
     }
 
     async function runCoordinate() {
